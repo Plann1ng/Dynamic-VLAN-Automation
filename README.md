@@ -343,7 +343,8 @@ Together, these two scripts form a **complete, safe, and reliable VLAN migration
 
 ## **Credits**
 
-Developed by **Plann1ng**
+Developed by **@Plann1ng**
 This system provides a lightweight alternative to Cisco ISE dynamic VLAN assignment, built using modern Python automation.
+More to come :D.
 
 ---
