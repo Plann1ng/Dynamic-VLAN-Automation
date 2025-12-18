@@ -8,220 +8,338 @@ Real-time, event-driven migration of Dell endpoints from VLAN 3 to VLAN 3010
 ![Status](https://img.shields.io/badge/status-production-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
----
+Below is a **clean, professional, production-grade README** that documents **both scripts together** as one system.
+It explains the architecture, purpose, workflow, safety rules, installation, usage, logging, and operational requirements.
 
-## **Overview**
-
-This deisgn implements a scenario based automated VLAN migration system for Cisco access switches.
-Using syslog-triggered events, a FastAPI webhook, and Netmiko SSH automation, the system detects when a device connects to a switchport, verifies whether it is a **Dell endpoint**, checks whether it is currently in **VLAN 3**, and if so, automatically migrates the port to **VLAN 3010**. (Hardcoded VLANs due to strict requirements, can be further made more flexible if need arises)
-
-The automation reacts immediately to link-up events and requires no polling, no manual intervention, and no human monitoring.
-
----
-## **Key Features**
-
-### **Event-Driven**
-
-Triggered automatically by `%LINK-3-UPDOWN` syslog messages.
-No polling, no SNMP overhead, and no performance impact.
-
-### **Dell Device Detection**
-
-Uses an OUI prefix list to identify Dell endpoints accurately.
-
-### **Conditional VLAN Migration**
-
-The system changes VLAN only when:
-
-* A device is physically connected
-* The MAC belongs to Dell
-* The port is currently in VLAN 3
-* The port has not been processed before
-
-### **Safe Port Bounce**
-
-After applying the new VLAN, the port is shut/no shut to force DHCP renewal.
-
-### **Persistent Processed-Port Tracking**
-
-Processed ports are stored in `port_changes.log` and loaded at startup.
-This prevents:
-
-* Duplicate automation
-* Trigger loops from port bouncing
-* Reprocessing when the user unplugs and reconnects
-
-### **Diagnostic Logging**
-
-Every decision and action is printed, including:
-
-* MAC found
-* Wrong VLAN
-* Non-Dell device
-* No MAC learned
-* Successful migration
-* Previously processed ports being skipped
-
-### **Log Handling**
-
-* No crashes on empty or malformed log entries
-* UTF-8 safe
-
----
-
-## **Architecture**
+You can copy/paste this into a file named:
 
 ```
-Cisco Switch (syslog)
-        |
-        v
-     Graylog
-(Syslog input + Event Definition)
-        |
-        v
-FastAPI Webhook (/linkup)
-        |
-        v
-Automation Engine
-(Netmiko Connection)
-        |
-        v
-Decision Logic: --------
-- Is Dell?               \  No -> Wait for the next Event
-- VLAN 3?                /  
-- Already processed?---
-        |
-        v
-VLAN Change to 3010
-Shutdown / No Shutdown
-Save configuration
-        |
-        v
-Logging + Persistent Cache
+README.md
 ```
 
 ---
 
-## **Installation**
+# README – Automated VLAN Migration System
 
-### 1. Install dependencies
-
-```
-pip install fastapi uvicorn netmiko
-```
-
-### 2. Clone this repository
-
-```
-git clone https://github.com/yourrepo/yourproject.git
-cd yourproject
-```
-
-### 3. Configure switch credentials
-
-Modify inside `handle_interface_event()`:
-
-```python
-device = {
-    "device_type": "cisco_ios",
-    "host": switch_ip,
-    "username": "your_username",
-    "password": "your_password"
-}
-```
-
-### 4. Run the webhook service
-
-```
-uvicorn webhook:app --host <Your_Host_IP> --port <Your_Port_IP>
-```
-
-### 5. Configure Graylog
-
-Create an Event Definition that matches:
-
-```
-%LINK-3-UPDOWN
-"changed state to up"
-```
-
-Set notification to:
-
-```
-http://<server-ip>:33333/linkup
-```
+### (Webhook-Triggered + Manual Bulk Migration Tools)
 
 ---
 
-## **How It Works**
+## Overview
 
-1. A port goes UP on a Cisco switch.
-2. The switch sends a syslog message to Graylog.
-3. Graylog forwards the event to `/linkup`.
-4. The webhook parses the switch IP and interface name.
-5. The automation connects via SSH to the switch.
-6. It retrieves the MAC address and VLAN.
-7. The system checks:
-
-   * Is the MAC a Dell OUI?
-   * Is VLAN equal to 3?
-   * Has this port been processed before?
-8. If conditions match, VLAN is changed to 3010.
-9. Port is shut/no shut to force DHCP renewal.
-10. A structured log entry is written.
-11. The port is added to the in-memory cache.
-
-The system is fully **idempotent** and **stable**.
+This automation system performs **safe, rule-controlled VLAN migration** for Dell endpoints across Cisco switches.
+It consists of **two complementary Python applications**, each handling a different operational scenario:
 
 ---
 
-## **Logging**
+## 1. Webhook Automation (`webhook.py` + `switch_automation.py`)
 
-Successful VLAN migrations are stored in:
+### Purpose
+
+This system reacts **in real-time** when an access port transitions from:
+
+```
+LINK DOWN → LINK UP
+```
+
+A syslog event from Graylog triggers an HTTP POST toward the webhook listener.
+The listener extracts:
+
+* Switch IP/hostname
+* Interface name
+* Time of the link event
+
+Then it calls the automation engine (`switch_automation.py`), which performs:
+
+### Workflow
+
+1. Connect to the switch via SSH (Netmiko)
+2. Run:
+
+   ```
+   show mac address-table interface <interface>
+   ```
+3. If no MAC exists → **no action**
+4. Extract VLAN + MAC address
+5. Normalize MAC format
+6. Compare MAC OUI against **Dell OUI list**
+7. If non-Dell → skip
+8. If VLAN ≠ 3 → skip
+9. Check if port is exactly:
+
+   ```
+   Administrative Mode: static access
+   ```
+
+   If not → **skip (trunk/phone/uplink protection)**
+10. Apply migration:
+
+```
+interface <port>
+switchport access vlan 3010
+shutdown
+no shutdown
+```
+
+11. Log the successful migration
+12. Add the interface to a "processed ports" set so the port is never migrated twice
+
+### Logging
+
+`switch_automation.py` writes entries to:
 
 ```
 port_changes.log
 ```
 
-Example entry:
+Format:
 
 ```
-[2025-12-17 16:08:45] SWITCH=xxxx.xxxx.xxxxx INTERFACE=GigabitEthernet1/0/14 MAC=cc:48:3a:46:bc:79 VLAN 3 -> 3010
+[YYYY-MM-DD HH:MM:SS] SWITCH=<ip> INTERFACE=<iface> MAC=<mac> VLAN 3 -> 3010
 ```
 
-At startup, these entries are parsed to prevent reprocessing.
+This log is **persistent**, and previously processed ports are loaded at startup to prevent repeated migrations.
 
 ---
 
-## **Troubleshooting**
+## 2. Manual Bulk Migration Tool
 
-| Symptom               | Explanation              | Solution                     |
-| --------------------- | ------------------------ | ---------------------------- |
-| No action taken       | Device is not Dell       | Expected                     |
-| VLAN not migrated     | VLAN is not 3            | Expected                     |
-| Script quiet on event | MAC not yet learned      | Normal for first 1–5 seconds |
-| VLAN changed twice    | Cache cleared or deleted | Keep log file persistent     |
-| No webhook triggers   | Graylog filter incorrect | Confirm event definition     |
+### (`single_switch_dynamic_change.py`)
+
+### Purpose
+
+This script handles the *opposite workflow*:
+
+* The port is **already connected**, possibly for days.
+* The VLAN still needs migration.
+* You want to migrate **all eligible ports on a switch at once**.
+
+This script does not listen to Graylog.
+Instead, the administrator runs it manually.
+
+### Workflow
+
+1. Prompt for:
+
+   * Switch IP/hostname
+   * Username
+   * Password
+
+2. Connect via SSH
+
+3. Pull all VLAN 3 MAC entries:
+
+```
+show mac address-table vlan 3 | in DYNAMIC
+```
+
+4. For each entry:
+
+   * Extract MAC and interface
+   * Normalize MAC
+   * Validate Dell OUI
+   * Verify **Administrative Mode: static access**
+   * (Optional testing mode) Skip unless interface is in your ALLOWED_PORTS list
+   * If eligible → apply:
+
+     ```
+     interface <port>
+     switchport access vlan 3010
+     shutdown
+     no shutdown
+     ```
+
+5. Log each successful migration to:
+
+```
+single_switch_port_changes.log
+```
+
+### When to use this script
+
+Use this tool when:
+
+* You want to migrate a whole switch at once
+* You are onboarding new offices
+* You want to catch ports that didn’t trigger a link-up event
+* You want to sweep all actively connected Dell devices
 
 ---
 
-## **Future Enhancements**
+# Why Two Scripts?
 
-* Slack or Teams notifications
-* SQLite database for historical tracking
-* Web dashboard showing processed ports
-* Configuration file (`config.yaml`)
-* Multi-threaded event handling
-* Automatic Dell OUI updates via IEEE API
+| Script                  | Trigger                 | Best For                  | Detection Method         |
+| ----------------------- | ----------------------- | ------------------------- | ------------------------ |
+| **Webhook (Real-Time)** | Link UP syslog event    | Users plugging in laptops | Per-interface MAC lookup |
+| **Bulk Scan (Manual)**  | Administrator runs tool | PCs already connected     | VLAN-wide MAC table scan |
+
+Both tools **serve the same business goal**, but cover **different operational timing**.
+
+Together, they ensure:
+
+* No Dell device remains on VLAN 3
+* Whether the port is connected *now*, or *connected later*
+* Whether users plug/unplug randomly
+* Whether the migration needs to happen immediately or in batch
 
 ---
 
-## **License**
+# Installation Requirements
 
-MIT License
-Feel free to use, modify, and improve.
+### Python
+
+Python 3.10+ recommended.
+
+Install dependencies:
+
+```
+pip install fastapi uvicorn netmiko
+```
+
+### Directory Structure
+
+```
+switch-automation/
+├── webhook.py
+├── switch_automation.py
+├── single_switch_dynamic_change.py
+├── port_changes.log
+├── single_switch_port_changes.log
+└── ...
+```
 
 ---
+
+# Running the Webhook Listener
+
+Start the FastAPI server:
+
+```
+uvicorn webhook:app --host 0.0.0.0 --port 33333
+```
+
+Graylog must POST link-up events to:
+
+```
+http://<automation-server>:33333/linkup
+```
+
+When an interface goes UP with a new device, the migration logic triggers automatically.
+
+---
+
+# Running the Manual Bulk Migration Script
+
+```
+python single_switch_dynamic_change.py
+```
+
+You will be prompted:
+
+```
+Enter switch IP/hostname:
+Username:
+Password:
+```
+
+The script processes all Dell devices detected dynamically on VLAN 3.
+
+---
+
+# Safety Features (Critical)
+
+## 1. Trunk / Uplink Protection
+
+The automation **will NEVER** touch a port unless:
+
+```
+Administrative Mode: static access
+```
+
+This prevents:
+
+* Breaking uplinks
+* Removing trunk configuration
+* Taking down buildings
+* STP topology changes
+
+## 2. Dell OUI Validation
+
+Only Dell OUIs are migrated.
+
+## 3. VLAN Check
+
+Only ports currently in **VLAN 3** are eligible.
+
+## 4. Replay Protection (Webhook mode)
+
+Once a port is migrated, the system never touches it again, even if:
+
+* User unplugs
+* User reconnects
+* Interface bounces
+* Graylog retries the event
+
+## 5. Logging
+
+Every migration is logged with:
+
+* Timestamp
+* Switch
+* Interface
+* MAC
+* Before/after VLAN
+
+---
+
+# Recommended Workflow in a Real Migration
+
+### 1. Enable Webhook Listener
+
+Captures real-time plug-in events.
+
+### 2. Run Bulk Tool After Hours
+
+Catches all Dell devices currently connected.
+
+### 3. Validate Logs
+
+Confirm all devices are migrating cleanly.
+
+### 4. Roll Out Site-Wide
+
+---
+
+# Troubleshooting
+
+### Dell MAC appears on trunk port
+
+This is normal. It means the device is behind another switch.
+Trunk protection will skip it safely.
+
+### No MAC found
+
+The port is up but nothing is connected.
+
+### VLAN is not 3
+
+The device is already migrated or in another network segment.
+
+### Authentication failures
+
+Verify SSH credentials.
+
+---
+
+# Conclusion
+
+Together, these two scripts form a **complete, safe, and reliable VLAN migration engine** capable of:
+
+* Real-time event-based automation
+* Bulk scanning and correction
+* Strict safety enforcement
+* Full audit logging
+* Enterprise-scale switch control
 
 ## **Credits**
 
