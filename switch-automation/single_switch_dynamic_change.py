@@ -3,7 +3,6 @@ import re
 import os
 from datetime import datetime
 
-# use your existing helper list + functions
 from switch_automation import DELL_OUI_PREFIXES, normalize_mac, is_dell_mac
 
 LOG_FILE = r"C:\Users\ryusha\Desktop\switch-automation\single_switch_port_changes.log"
@@ -100,17 +99,6 @@ def scan_and_migrate(switch_ip, username, password):
             print(f"Skipping {iface}: MAC {mac} is NOT Dell.")
             continue
 
-        # Allow only certain test interfaces
-        ALLOWED_PORTS = {
-            "Gi1/0/14",
-            "Gi1/0/23"
-        }
-
-        # Skip all other interfaces during testing
-        if iface not in ALLOWED_PORTS:
-            print(f"Skipping {iface}: Not in allowed test port list.")
-            continue
-
         # Now it is safe to migrate
         print(f"Migrating {iface}: VLAN 3 → 3010")
 
@@ -145,3 +133,4 @@ if __name__ == "__main__":
     password = input("Password: ").strip()
 
     scan_and_migrate(switch, username, password)
+
