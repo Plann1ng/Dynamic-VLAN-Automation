@@ -3,7 +3,7 @@ import re
 import os
 from datetime import datetime
 
-LOG_FILE = r"C:\Users\ryusha\Desktop\switch-automation\port_changes.log"
+LOG_FILE = r"Your/Path/to/switch_automation"
 
 DELL_OUI_PREFIXES = [
     "00:06:5B",
@@ -340,3 +340,4 @@ def handle_interface_event(switch_ip, interface_name, username, password):
     net.disconnect()
 
 load_processed_ports()
+
