@@ -133,7 +133,7 @@ device = {
 ### 4. Run the webhook service
 
 ```
-uvicorn webhook:app --host 0.0.0.0 --port 33333
+uvicorn webhook:app --host <Your_Host_IP> --port <Your_Port_IP>
 ```
 
 ### 5. Configure Graylog
