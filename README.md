@@ -8,10 +8,6 @@ Real-time, event-driven migration of Dell endpoints from VLAN 3 to VLAN 3010
 ![Status](https://img.shields.io/badge/status-production-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-```
-README.md
-```
-
 ---
 
 # README – Automated VLAN Migration System
