@@ -8,11 +8,6 @@ Real-time, event-driven migration of Dell endpoints from VLAN 3 to VLAN 3010
 ![Status](https://img.shields.io/badge/status-production-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-Below is a **clean, professional, production-grade README** that documents **both scripts together** as one system.
-It explains the architecture, purpose, workflow, safety rules, installation, usage, logging, and operational requirements.
-
-You can copy/paste this into a file named:
-
 ```
 README.md
 ```
