@@ -53,8 +53,8 @@ async def linkup(request: Request):
     handle_interface_event(
         switch_ip=switch,
         interface_name=iface,
-        username="admin",
-        password="TYAaAS32hd"
+        username="",
+        password=""
     )
     #
     # Only call Ansible for valid events
@@ -72,3 +72,4 @@ async def linkup(request: Request):
         print("Missing switch or interface, ignoring event.")
 
     return {"status": "ok", "switch": switch, "interface": iface}
+
